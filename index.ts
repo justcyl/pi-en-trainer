@@ -93,11 +93,13 @@ export default function enTrainer(pi: ExtensionAPI) {
 		const modelSetting = getSetting(EXT_NAME, "translation-model", DEFAULT_MODEL);
 		const textToTranslate = event.text;
 
-		// Show "translating…" immediately
+		// Show "translating…" immediately (above editor, default placement)
 		ctx.ui.setWidget(
 			WIDGET_KEY,
-			(_tui, theme) => new Text(theme.fg("muted", "🇬🇧  translating…"), 0, 0),
-			{ placement: "belowEditor" },
+			(_tui, theme) => new Text(
+				theme.fg("dim", "─── 🇬🇧  ") + theme.fg("muted", "translating…"),
+				0, 0,
+			),
 		);
 
 		// Start translation — fire and forget
@@ -113,9 +115,10 @@ export default function enTrainer(pi: ExtensionAPI) {
 				if (controller.signal.aborted) return; // stale result, discard
 				ctx.ui.setWidget(
 					WIDGET_KEY,
-					(_tui, theme) =>
-						new Text(theme.fg("muted", "🇬🇧  ") + theme.fg("accent", translation), 0, 0),
-					{ placement: "belowEditor" },
+					(_tui, theme) => new Text(
+						theme.fg("dim", "─── 🇬🇧  ") + theme.fg("accent", translation),
+						0, 0,
+					),
 				);
 			})
 			.catch((err) => {
@@ -123,8 +126,10 @@ export default function enTrainer(pi: ExtensionAPI) {
 				const msg = err instanceof Error ? err.message : String(err);
 				ctx.ui.setWidget(
 					WIDGET_KEY,
-					(_tui, theme) => new Text(theme.fg("warning", `⚠  EN Trainer: ${msg}`), 0, 0),
-					{ placement: "belowEditor" },
+					(_tui, theme) => new Text(
+						theme.fg("dim", "─── 🇬🇧  ") + theme.fg("warning", `⚠  ${msg}`),
+						0, 0,
+					),
 				);
 			});
 
