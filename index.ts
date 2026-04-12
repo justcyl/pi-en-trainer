@@ -20,7 +20,8 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
+import { DynamicBorder } from "@mariozechner/pi-coding-agent";
+import { Container, Text } from "@mariozechner/pi-tui";
 import { getSetting, setSetting } from "@juanibiapina/pi-extension-settings";
 import type { SettingDefinition } from "@juanibiapina/pi-extension-settings";
 
@@ -93,15 +94,18 @@ export default function enTrainer(pi: ExtensionAPI) {
 		const modelSetting = getSetting(EXT_NAME, "translation-model", DEFAULT_MODEL);
 		const textToTranslate = event.text;
 
+		// helper: build the belowEditor widget with DynamicBorder
+		const makeWidget = (label: string, color: "muted" | "accent" | "warning") =>
+			// biome-ignore lint: theme typed as any for simplicity
+			(_tui: unknown, theme: any) => {
+				const container = new Container();
+				container.addChild(new DynamicBorder((s: string) => theme.fg("dim", s)));
+				container.addChild(new Text(theme.fg("muted", "🇬🇧  ") + theme.fg(color, label), 1, 0));
+				return container;
+			};
+
 		// Show "translating…" immediately (below editor)
-		ctx.ui.setWidget(
-			WIDGET_KEY,
-			(_tui, theme) => new Text(
-				theme.fg("dim", "─── 🇬🇧  ") + theme.fg("muted", "translating…"),
-				0, 0,
-			),
-			{ placement: "belowEditor" },
-		);
+		ctx.ui.setWidget(WIDGET_KEY, makeWidget("translating…", "muted"), { placement: "belowEditor" });
 
 		// Start translation — fire and forget
 		const controller = new AbortController();
@@ -114,26 +118,12 @@ export default function enTrainer(pi: ExtensionAPI) {
 		)
 			.then((translation) => {
 				if (controller.signal.aborted) return; // stale result, discard
-				ctx.ui.setWidget(
-					WIDGET_KEY,
-					(_tui, theme) => new Text(
-						theme.fg("dim", "─── 🇬🇧  ") + theme.fg("accent", translation),
-						0, 0,
-					),
-					{ placement: "belowEditor" },
-				);
+				ctx.ui.setWidget(WIDGET_KEY, makeWidget(translation, "accent"), { placement: "belowEditor" });
 			})
 			.catch((err) => {
 				if (controller.signal.aborted) return;
 				const msg = err instanceof Error ? err.message : String(err);
-				ctx.ui.setWidget(
-					WIDGET_KEY,
-					(_tui, theme) => new Text(
-						theme.fg("dim", "─── 🇬🇧  ") + theme.fg("warning", `⚠  ${msg}`),
-						0, 0,
-					),
-					{ placement: "belowEditor" },
-				);
+				ctx.ui.setWidget(WIDGET_KEY, makeWidget(`⚠  ${msg}`, "warning"), { placement: "belowEditor" });
 			});
 
 		// Return immediately — no waiting for translation
