@@ -1,15 +1,16 @@
 /**
  * pi-en-trainer
  *
- * After each Chinese prompt is submitted, shows the English translation
- * in a widget BELOW the editor — without blocking prompt delivery and
- * without touching the LLM context at all.
+ * After each Chinese prompt, shows a polished English translation as a
+ * custom message in the conversation — appearing BEFORE the agent's response,
+ * but never sent to the LLM context.
  *
- * Flow:
- *   1. User submits Chinese prompt
- *   2. Prompt goes to agent immediately (no delay)
- *   3. Translation runs in background via cheap model
- *   4. Widget below editor updates: "🇬🇧  <English translation>"
+ * Async design (no perceived delay at prompt submission):
+ *   1. `input` event:            detect Chinese → start translation in background
+ *                                → return immediately (prompt appears right away)
+ *   2. `before_agent_start`:     await the already-running translation promise
+ *                                → inject it as a display-only custom message
+ *   3. `context` event:          filter the translation message out before LLM call
  *
  * Configuration via /extension-settings:
  *   en-trainer / translation-model  (default: github-copilot/claude-haiku-4.5)
@@ -29,12 +30,13 @@ import { detectChinese } from "./detector.js";
 import { translateToEnglish } from "./translator.js";
 
 const EXT_NAME = "en-trainer";
-const WIDGET_KEY = "en-trainer-translation";
+const CUSTOM_TYPE = "en-trainer-translation";
 const DEFAULT_MODEL = "github-copilot/claude-haiku-4.5";
 
 export default function enTrainer(pi: ExtensionAPI) {
-	// Cancel any in-progress translation when a new prompt arrives
-	let translationController: AbortController | null = null;
+	// Holds the in-flight translation promise started in `input`.
+	// before_agent_start awaits this to inject the result before the agent runs.
+	let translationPromise: Promise<string> | null = null;
 
 	// ── Settings registration ─────────────────────────────────────────────────
 	pi.events.emit("pi-extension-settings:register", {
@@ -43,7 +45,7 @@ export default function enTrainer(pi: ExtensionAPI) {
 			{
 				id: "enabled",
 				label: "Enabled",
-				description: "Show English translation after Chinese prompts",
+				description: "Show English translation before agent responses",
 				defaultValue: "on",
 				values: ["on", "off"],
 			},
@@ -56,6 +58,17 @@ export default function enTrainer(pi: ExtensionAPI) {
 		] satisfies SettingDefinition[],
 	});
 
+	// ── Custom message renderer ───────────────────────────────────────────────
+	// Renders the translation annotation with DynamicBorder + Container.
+	pi.registerMessageRenderer(CUSTOM_TYPE, (message, _opts, theme) => {
+		const container = new Container();
+		container.addChild(new DynamicBorder((s: string) => theme.fg("dim", s)));
+		container.addChild(
+			new Text(theme.fg("muted", "🇬🇧  ") + theme.fg("accent", message.content as string), 1, 0),
+		);
+		return container;
+	});
+
 	// ── /en-trainer command ───────────────────────────────────────────────────
 	pi.registerCommand("en-trainer", {
 		description: "Toggle EN Trainer on/off",
@@ -63,7 +76,6 @@ export default function enTrainer(pi: ExtensionAPI) {
 			const current = getSetting(EXT_NAME, "enabled", "on");
 			const next = current === "on" ? "off" : "on";
 			setSetting(EXT_NAME, "enabled", next);
-			if (next === "off") ctx.ui.setWidget(WIDGET_KEY, undefined);
 			ctx.ui.notify(
 				`EN Trainer: ${next === "on" ? "✓ on" : "✗ off"}`,
 				next === "on" ? "info" : "warning",
@@ -72,61 +84,57 @@ export default function enTrainer(pi: ExtensionAPI) {
 	});
 
 	// ── input event ──────────────────────────────────────────────────────────
-	// Returns immediately — prompt is never delayed.
-	// Translation runs in the background; widget updates when it completes.
+	// Returns immediately so the prompt appears in the conversation without
+	// delay. Translation is kicked off in the background; before_agent_start
+	// will await it.
 	pi.on("input", async (event, ctx) => {
-		// Abort any previous in-flight translation
-		translationController?.abort();
-		translationController = null;
+		translationPromise = null;
 
 		if (event.source === "extension") return { action: "continue" };
-
-		if (getSetting(EXT_NAME, "enabled", "on") !== "on") {
-			ctx.ui.setWidget(WIDGET_KEY, undefined);
-			return { action: "continue" };
-		}
-
-		if (!detectChinese(event.text).isChinese) {
-			ctx.ui.setWidget(WIDGET_KEY, undefined);
-			return { action: "continue" };
-		}
+		if (getSetting(EXT_NAME, "enabled", "on") !== "on") return { action: "continue" };
+		if (!detectChinese(event.text).isChinese) return { action: "continue" };
 
 		const modelSetting = getSetting(EXT_NAME, "translation-model", DEFAULT_MODEL);
-		const textToTranslate = event.text;
 
-		// helper: build the belowEditor widget with DynamicBorder
-		const makeWidget = (label: string, color: "muted" | "accent" | "warning") =>
-			// biome-ignore lint: theme typed as any for simplicity
-			(_tui: unknown, theme: any) => {
-				const container = new Container();
-				container.addChild(new DynamicBorder((s: string) => theme.fg("dim", s)));
-				container.addChild(new Text(theme.fg("muted", "🇬🇧  ") + theme.fg(color, label), 1, 0));
-				return container;
+		// Fire translation — do NOT await. The promise runs while the rest of
+		// the pipeline (input handling, before_agent_start) proceeds.
+		translationPromise = translateToEnglish(event.text, ctx, modelSetting);
+
+		return { action: "continue" }; // prompt sends immediately
+	});
+
+	// ── before_agent_start event ──────────────────────────────────────────────
+	// The translation has been running since `input` fired. By the time this
+	// event fires, a portion of the wait is already done. Await the remaining
+	// time here and inject the result as a display-only message that appears
+	// before the agent's response.
+	pi.on("before_agent_start", async (_event, _ctx) => {
+		if (!translationPromise) return undefined;
+
+		const promise = translationPromise;
+		translationPromise = null;
+
+		try {
+			const translation = await promise;
+			return {
+				message: {
+					customType: CUSTOM_TYPE,
+					content: translation,
+					display: true, // show in TUI, but filtered from LLM context below
+				},
 			};
+		} catch {
+			return undefined; // translation failed silently, agent runs normally
+		}
+	});
 
-		// Show "translating…" immediately (below editor)
-		ctx.ui.setWidget(WIDGET_KEY, makeWidget("translating…", "muted"), { placement: "belowEditor" });
-
-		// Start translation — fire and forget
-		const controller = new AbortController();
-		translationController = controller;
-
-		translateToEnglish(
-			textToTranslate,
-			{ modelRegistry: ctx.modelRegistry, signal: controller.signal },
-			modelSetting,
-		)
-			.then((translation) => {
-				if (controller.signal.aborted) return; // stale result, discard
-				ctx.ui.setWidget(WIDGET_KEY, makeWidget(translation, "accent"), { placement: "belowEditor" });
-			})
-			.catch((err) => {
-				if (controller.signal.aborted) return;
-				const msg = err instanceof Error ? err.message : String(err);
-				ctx.ui.setWidget(WIDGET_KEY, makeWidget(`⚠  ${msg}`, "warning"), { placement: "belowEditor" });
-			});
-
-		// Return immediately — no waiting for translation
-		return { action: "continue" };
+	// ── context event ─────────────────────────────────────────────────────────
+	// Strip translation messages before every LLM call so the LLM never sees them.
+	pi.on("context", async (event, _ctx) => {
+		return {
+			messages: event.messages.filter(
+				(m) => !(m.type === "custom" && m.customType === CUSTOM_TYPE),
+			),
+		};
 	});
 }
