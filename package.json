@@ -1,0 +1,25 @@
+{
+  "name": "pi-en-trainer",
+  "version": "1.0.0",
+  "description": "Pi extension: show English translation of Chinese prompts inline, without modifying the prompt or injecting into LLM context.",
+  "keywords": ["pi-package", "pi-extension"],
+  "type": "module",
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "dependencies": {
+    "@juanibiapina/pi-extension-settings": "^0.6.0"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*",
+    "@sinclair/typebox": "*"
+  },
+  "author": "justcyl",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/justcyl/pi-en-trainer"
+  }
+}
