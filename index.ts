@@ -93,13 +93,14 @@ export default function enTrainer(pi: ExtensionAPI) {
 		const modelSetting = getSetting(EXT_NAME, "translation-model", DEFAULT_MODEL);
 		const textToTranslate = event.text;
 
-		// Show "translating…" immediately (above editor, default placement)
+		// Show "translating…" immediately (below editor)
 		ctx.ui.setWidget(
 			WIDGET_KEY,
 			(_tui, theme) => new Text(
 				theme.fg("dim", "─── 🇬🇧  ") + theme.fg("muted", "translating…"),
 				0, 0,
 			),
+			{ placement: "belowEditor" },
 		);
 
 		// Start translation — fire and forget
@@ -119,6 +120,7 @@ export default function enTrainer(pi: ExtensionAPI) {
 						theme.fg("dim", "─── 🇬🇧  ") + theme.fg("accent", translation),
 						0, 0,
 					),
+					{ placement: "belowEditor" },
 				);
 			})
 			.catch((err) => {
@@ -130,6 +132,7 @@ export default function enTrainer(pi: ExtensionAPI) {
 						theme.fg("dim", "─── 🇬🇧  ") + theme.fg("warning", `⚠  ${msg}`),
 						0, 0,
 					),
+					{ placement: "belowEditor" },
 				);
 			});
 
