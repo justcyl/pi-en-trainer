@@ -7,16 +7,17 @@
 import { complete, type UserMessage } from "@mariozechner/pi-ai";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-const SYSTEM_PROMPT = `You are a prompt engineer assistant. Given a Chinese instruction intended for an AI coding agent, do two things in one pass:
+const SYSTEM_PROMPT = `You are a translation assistant. Given a Chinese instruction intended for an AI coding agent, do two things in one pass:
 
-1. Translate it to English
-2. Polish it to be clearer and more actionable:
-   - Use imperative mood ("Implement", "Refactor", "Fix", "Add", "Extract")
-   - Add specificity where the original is vague (e.g. "写个排序" → "Implement an efficient sorting function")
-   - Preserve all technical terms, identifiers, file names, and code snippets as-is
+1. Translate it accurately to English
+2. Make it sound natural and clear:
+   - Keep the same tone and intent as the original
+   - Fix awkward phrasing so it reads like a native English speaker wrote it
+   - Add mild specificity only where the original is genuinely vague
+   - Preserve all technical terms, identifiers, file names, and code snippets exactly as-is
    - Do NOT add requirements not implied by the original
 
-Output ONLY the final polished English prompt. No explanation, no quotes, no preamble.`;
+Output ONLY the polished English. No explanation, no quotes, no preamble.`;
 
 /**
  * Parse a "provider/model-id" string.
