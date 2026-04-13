@@ -55,6 +55,12 @@ export default function enTrainer(pi: ExtensionAPI) {
 				description: 'Model used for translation (format: "provider/model-id"). Use a cheap/fast model.',
 				defaultValue: DEFAULT_MODEL,
 			},
+			{
+				id: "max-length",
+				label: "Max Prompt Length",
+				description: "Skip translation when prompt exceeds this character count (0 = no limit)",
+				defaultValue: "300",
+			},
 		] satisfies SettingDefinition[],
 	});
 
@@ -92,6 +98,8 @@ export default function enTrainer(pi: ExtensionAPI) {
 
 		if (event.source === "extension") return { action: "continue" };
 		if (getSetting(EXT_NAME, "enabled", "on") !== "on") return { action: "continue" };
+		const maxLen = Number(getSetting(EXT_NAME, "max-length", "300"));
+		if (maxLen > 0 && event.text.length > maxLen) return { action: "continue" };
 		if (!detectChinese(event.text).isChinese) return { action: "continue" };
 
 		const modelSetting = getSetting(EXT_NAME, "translation-model", DEFAULT_MODEL);
