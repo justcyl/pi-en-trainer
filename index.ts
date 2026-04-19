@@ -59,7 +59,7 @@ export default function enTrainer(pi: ExtensionAPI) {
 				id: "max-length",
 				label: "Max Prompt Length",
 				description: "Skip translation when prompt exceeds this character count (0 = no limit)",
-				defaultValue: "300",
+				defaultValue: "100",
 			},
 		] satisfies SettingDefinition[],
 	});
